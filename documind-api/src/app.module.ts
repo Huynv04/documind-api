@@ -51,5 +51,5 @@ import { AdminModule } from '@modules/admin/admin.module';
     AdminModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }
 

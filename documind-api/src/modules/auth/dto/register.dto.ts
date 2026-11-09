@@ -1,19 +1,14 @@
-import { IsEmail, IsString, MinLength, MaxLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-
+import { IsEmail, IsString, MinLength, Matches, Min } from 'class-validator'
 export class RegisterDto {
-  @ApiProperty({ example: 'John Doe' })
   @IsString()
-  @MaxLength(100)
   name: string;
 
-  @ApiProperty({ example: 'john@company.com' })
-  @IsEmail()
+  @IsEmail({}, { message: 'Email không đúng định dạng' })
   email: string;
 
-  @ApiProperty({ example: 'StrongPass@123', minLength: 8 })
   @IsString()
-  @MinLength(8)
+  @MinLength(6, { message: 'Mật khẩu phải từ 6 kí tự trở lên' })
+  @Matches(/^(?=.*[A-Z])(?=.*[!@#$%^&*(),.?":{}|<>])/,
+    { message: 'Mật khẩu phải chứa ít nhất 1 chữ in hoa và 1 ký tự đặc biệt' })
   password: string;
 }
-
