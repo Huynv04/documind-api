@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # --- 1. PostgreSQL with pgvector extension ---
+  vector-db:
+    image: pgvector/pgvector:pg16
+    container_name: documind-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-documind}
+      POSTGRES_PASSWORD: ${DB_PASS:-documind_pass}
+      POSTGRES_DB: ${DB_NAME:-documind_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-documind} -d ${DB_NAME:-documind_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- 2. Redis for BullMQ Queues and Caching ---
+  redis:
+    image: redis:7-alpine
+    container_name: documind-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- 3. MinIO Object Storage (S3-compatible) ---
+  minio:
+    image: minio/minio:latest
+    container_name: documind-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # --- 4. DocuMind NestJS API Service ---
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: documind-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${DB_USER:-documind}:${DB_PASS:-documind_pass}@vector-db:5432/${DB_NAME:-documind_db}?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-documind-uploads}
+      JWT_SECRET: ${JWT_SECRET:-your_super_secret_jwt_key_change_in_production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    ports:
+      - "3000:3000"
+    depends_on:
+      vector-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./storage/uploads:/app/storage/uploads
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
