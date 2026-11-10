@@ -6,11 +6,6 @@ import { LoggerModule } from 'nestjs-pino';
 
 import envConfig from '@config/env.config';
 import { AuthModule } from '@modules/auth/auth.module';
-import { DocumentModule } from '@modules/document/document.module';
-import { RagModule } from '@modules/rag/rag.module';
-import { ChatModule } from '@modules/chat/chat.module';
-import { JobsModule } from '@modules/jobs/jobs.module';
-import { AdminModule } from '@modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -43,12 +38,7 @@ import { AdminModule } from '@modules/admin/admin.module';
     EventEmitterModule.forRoot(),
 
     // --- Feature Modules ---
-    AuthModule,
-    DocumentModule,
-    RagModule,
-    ChatModule,
-    JobsModule,
-    AdminModule,
+    AuthModule
   ],
 })
 export class AppModule { }
