@@ -34,7 +34,9 @@ function CallbackContent() {
 
         router.push('/');
       } catch {
-        setError('Không thể xử lý mã xác thực Google OAuth2.');
+        setTimeout(() => {
+          setError('Không thể xử lý mã xác thực Google OAuth2.');
+        }, 0);
       }
     } else {
       // Check if opened inside popup

@@ -15,6 +15,15 @@ export interface DocumentTag {
   tag: string;
 }
 
+export interface DocumentChunkItem {
+  id: string;
+  chunkIndex: number;
+  content: string;
+  pageNumber: number | null;
+  tokenCount: number;
+  createdAt: string;
+}
+
 export interface DocumentItem {
   id: string;
   originalName: string;
@@ -50,4 +59,3 @@ export interface QueryDocumentParams {
   sensitivity?: SensitivityLevel;
   search?: string;
 }
-

@@ -35,6 +35,7 @@ Khác với các công cụ tìm kiếm từ khóa truyền thống (dễ bỏ s
   - Xác thực người dùng qua JWT và Google SSO OAuth2.
   - Phân quyền theo vai trò (RBAC): `EMPLOYEE`, `KNOWLEDGE_MANAGER`, `ADMIN`.
   - Quản lý tài liệu: Tải lên kéo thả, theo dõi trạng thái xử lý bất đồng bộ (`UPLOADING`, `PROCESSING`, `INDEXED`, `FAILED`, `ARCHIVED`, `DELETED`), gắn thẻ và gán phòng ban.
+  - Giám sát hàng đợi nạp ngầm & Soi Chunks (Module 3): Giám sát trạng thái Pipeline thời gian thực (Storage → Parser → Chunking → Batch Embedding → pgvector Indexing), kiểm tra cấu trúc từng đoạn văn bản đã bẻ (Chunk Inspector: token count, page index, nội dung trích xuất), và cơ chế kích hoạt thử lại (Retry Ingestion) cho các tệp thất bại.
   - Trò chuyện & Tra cứu: Hỏi đáp đa lượt (Multi-turn Chat với Query Rewriting), Streaming phản hồi từng ký tự qua Server-Sent Events (SSE), hiển thị nguồn trích dẫn (Citations) chính xác kèm trích đoạn gốc, đánh giá câu trả lời (Like/Dislike feedback).
   - Quản trị: Xem thống kê tổng lượng token tiêu thụ, chi phí ước tính, và danh sách nhật ký kiểm toán (Audit Logs).
 - **Constraints**:

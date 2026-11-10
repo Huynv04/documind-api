@@ -330,6 +330,72 @@ export class DocumentService {
   }
 
   /**
+   * 7. Lấy danh sách các Chunks của tài liệu (Kiểm tra kết quả bóc tách của Module 3)
+   */
+  async getDocumentChunks(id: string, user: { id: string; role: UserRole }) {
+    await this.findOne(id, user);
+
+    return this.prisma.documentChunk.findMany({
+      where: { documentId: id, isActive: true },
+      orderBy: { chunkIndex: 'asc' },
+      select: {
+        id: true,
+        chunkIndex: true,
+        content: true,
+        pageNumber: true,
+        tokenCount: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /**
+   * 8. Kích hoạt thử lại (Retry) nạp tài liệu thất bại vào hàng đợi BullMQ
+   */
+  async retryIngestion(id: string, user: { id: string; role: UserRole }) {
+    const document = await this.findOne(id, user);
+
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.KNOWLEDGE_MANAGER) {
+      throw new ForbiddenException('Bạn không có quyền kích hoạt xử lý lại tài liệu này');
+    }
+
+    if (!this.ingestionQueue) {
+      throw new BadRequestException('Hàng đợi xử lý ngầm (BullMQ) chưa sẵn sàng');
+    }
+
+    await this.prisma.document.update({
+      where: { id: document.id },
+      data: {
+        status: DocumentStatus.PROCESSING,
+        errorMessage: null,
+      },
+    });
+
+    await this.ingestionQueue.add(
+      'ingest-document',
+      {
+        documentId: document.id,
+        storagePath: document.storagePath,
+        mimeType: document.mimeType,
+        originalName: document.originalName,
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: true,
+      },
+    );
+
+    return {
+      success: true,
+      message: `Đã đưa tài liệu "${document.originalName}" vào lại hàng đợi xử lý ngầm`,
+    };
+  }
+
+  /**
    * Lựa chọn parser phù hợp dựa theo MIME type hoặc tên file
    */
   private getParser(mimeType: string, filename?: string): DocumentParser | undefined {

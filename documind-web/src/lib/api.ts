@@ -1,5 +1,5 @@
 import { AuthResponse, User } from '@/types/auth';
-import { DocumentItem, DocumentListResponse, QueryDocumentParams } from '@/types/document';
+import { DocumentItem, DocumentListResponse, QueryDocumentParams, DocumentChunkItem } from '@/types/document';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
 
@@ -159,6 +159,18 @@ export const documentApi = {
   async delete(id: string): Promise<{ success: boolean; message: string }> {
     return request<{ success: boolean; message: string }>(`/documents/${id}`, {
       method: 'DELETE',
+    });
+  },
+
+  async getChunks(id: string): Promise<DocumentChunkItem[]> {
+    return request<DocumentChunkItem[]>(`/documents/${id}/chunks`, {
+      method: 'GET',
+    });
+  },
+
+  async retry(id: string): Promise<{ success: boolean; message: string }> {
+    return request<{ success: boolean; message: string }>(`/documents/${id}/retry`, {
+      method: 'POST',
     });
   },
 };

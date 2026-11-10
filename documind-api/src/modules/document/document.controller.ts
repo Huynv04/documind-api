@@ -122,6 +122,25 @@ export class DocumentController {
     res.end(buffer);
   }
 
+  @Get(':id/chunks')
+  @ApiOperation({ summary: 'Lấy danh sách các vector chunks đã bóc tách của tài liệu' })
+  async getChunks(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentService.getDocumentChunks(id, user);
+  }
+
+  @Post(':id/retry')
+  @Roles(UserRole.KNOWLEDGE_MANAGER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Kích hoạt thử lại (Retry) nạp tài liệu vào hàng đợi BullMQ' })
+  async retry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentService.retryIngestion(id, user);
+  }
+
   @Delete(':id')
   @Roles(UserRole.KNOWLEDGE_MANAGER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Xóa tài liệu khỏi hệ thống' })

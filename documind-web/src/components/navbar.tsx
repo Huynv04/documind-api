@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { Sparkles, FileText, Home, LogOut, Shield } from 'lucide-react';
+import { Sparkles, FileText, Home, LogOut } from 'lucide-react';
 
 export function Navbar() {
   const { user, logout } = useAuth();
