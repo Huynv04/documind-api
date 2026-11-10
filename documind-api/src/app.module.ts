@@ -9,6 +9,7 @@ import envConfig from '@config/env.config';
 import { AuthModule } from '@modules/auth/auth.module';
 import { DocumentModule } from '@modules/document/document.module';
 import { ChatModule } from '@modules/chat/chat.module';
+import { AdminModule } from '@modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { ChatModule } from '@modules/chat/chat.module';
     AuthModule,
     DocumentModule,
     ChatModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

@@ -56,7 +56,16 @@ Khác với các công cụ tìm kiếm từ khóa truyền thống (dễ bỏ s
       - Thống kê tỷ lệ hài lòng thời gian thực: % Hài lòng, Tổng số câu trả lời, Lượt Thích / Không thích.
       - Bảng phân tích câu trả lời bị phản hồi tiêu cực (Disliked Answers Review Table) dành riêng cho Knowledge Manager: hiển thị chi tiết câu hỏi, nội dung AI sinh, lý do phân loại (sai lệch, lỗi thời, thiếu ý), người phản hồi và liên kết đối chiếu tài liệu nguồn để kịp thời bổ sung, sửa đổi tài liệu.
       - Modal phản hồi chi tiết 5 nhóm lý do khi người dùng bấm Dislike câu trả lời.
-  - Quản trị: Xem thống kê tổng lượng token tiêu thụ, chi phí ước tính, và danh sách nhật ký kiểm toán (Audit Logs).
+  - **Module 6 Backend: Admin Module, Quản trị Hệ thống, Kiểm soát Chi phí AI & Audit Logs**:
+    - **Tổng hợp Chỉ số Hệ thống Toàn diện (System Metrics & LLMOps Overview)**:
+      - Người dùng: Tổng số tài khoản, người dùng hoạt động/vô hiệu, phân loại vai trò (`EMPLOYEE`, `KNOWLEDGE_MANAGER`, `ADMIN`).
+      - Tài liệu & Lưu trữ: Thống kê trạng thái vòng đời tài liệu (`UPLOADING`, `PROCESSING`, `INDEXED`, `FAILED`, `ARCHIVED`, `DELETED`), tổng dung lượng lưu trữ (MB/GB), tổng số vector chunks.
+      - Tương tác & Trò chuyện: Tổng số phiên chat, tin nhắn, độ trễ trung bình (`avgLatencyMs`), chỉ số hài lòng phản hồi (% Like/Dislike).
+      - Quản lý Token & Chi phí AI ước tính: Tách biệt token chat (`gpt-4o-mini`) và token embedding (`text-embedding-3-small`), quy đổi chi phí theo USD và VND (tỷ giá 25.400 ₫/USD).
+    - **Truy xuất & Lọc Nhật ký Kiểm toán (Audit Logs Query Engine)**:
+      - Endpoint phân trang chuẩn Enterprise (`page`, `limit`).
+      - Lọc theo hành động (`action`), loại tài nguyên (`resourceType`), định danh người dùng (`userId`), khoảng thời gian (`startDate`, `endDate`) và từ khóa tìm kiếm (`search`).
+      - Bảo vệ tuyệt đối bằng cơ chế RBAC cấp controller (`@Roles(UserRole.ADMIN)`).
 - **Constraints**:
   - Không tự suy đoán thông tin ngoài ngữ cảnh tài liệu nội bộ được cung cấp.
   - Xử lý nạp tài liệu nặng chạy ngầm qua Background Queue (BullMQ) để không chặn luồng HTTP API.
