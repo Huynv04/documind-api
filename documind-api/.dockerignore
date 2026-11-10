@@ -1,0 +1,34 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Output & Build
+dist
+coverage
+.next
+
+# Environment variables & secrets (prevent leaking into image)
+.env
+.env.*
+!.env.example
+
+# Local storage & file uploads
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Git & IDE
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+
+# Documentation & Assets
+docs/
+*.md
+*.docx
+
