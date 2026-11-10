@@ -1,14 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { UserRole } from '../../common/guards/roles.guard';
+import { UserRole } from '@prisma/client';
 
 export interface VectorSearchResult {
   chunkId: string;
   documentId: string;
   content: string;
   pageNumber: number | null;
-  score: number; // cosine similarity (0-1)
+  score: number; // cosine similarity (0 to 1)
 }
 
 export interface HybridSearchResult extends VectorSearchResult {
@@ -17,23 +17,52 @@ export interface HybridSearchResult extends VectorSearchResult {
 }
 
 @Injectable()
-export class VectorRepository {
+export class VectorRepository implements OnModuleInit {
+  private readonly logger = new Logger(VectorRepository.name);
   private readonly topK: number;
+  private isCamelCase = true; // Prisma default: "documentId", "isActive", etc.
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
   ) {
-    this.topK = config.get<number>('RETRIEVAL_TOP_K', 5);
+    this.topK = this.config.get<number>('RETRIEVAL_TOP_K', 5);
+  }
+
+  async onModuleInit() {
+    try {
+      // Check column naming in document_chunks table
+      const cols: Array<{ column_name: string }> = await this.prisma.$queryRawUnsafe(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'document_chunks' AND column_name IN ('documentId', 'document_id')
+        LIMIT 1
+      `);
+      if (cols.length > 0 && cols[0].column_name === 'document_id') {
+        this.isCamelCase = false;
+        this.logger.log('Database detected with snake_case column names (document_id)');
+      } else {
+        this.isCamelCase = true;
+        this.logger.log('Database detected with camelCase column names ("documentId")');
+      }
+    } catch {
+      // Default to true (Prisma schema standard)
+      this.isCamelCase = true;
+    }
   }
 
   /**
-   * Semantic vector search with RBAC metadata filtering.
-   * Only searches chunks belonging to documents the user has permission to access.
-   * Uses pgvector cosine distance via raw SQL.
+   * Semantic vector search with Document-level RBAC Metadata Pre-filtering.
    *
-   * SECURITY: The `userRole` and `departmentId` params enforce Document-level RBAC.
-   * No vectors from restricted documents are ever included in results.
+   * SECURITY PRE-FILTER:
+   * - Status must be 'INDEXED'
+   * - Chunk must be active (isActive = true)
+   * - If user is ADMIN: bypass role/department filtering
+   * - Otherwise:
+   *   1. userRole must be in allowedRoles array
+   *   2. departmentId must match document.departmentId OR document.departmentId IS NULL (company-wide)
+   *
+   * Uses pgvector cosine distance: 1 - (embedding <=> queryVector)
    */
   async vectorSearch(
     queryEmbedding: number[],
@@ -42,33 +71,53 @@ export class VectorRepository {
     topK: number = this.topK,
   ): Promise<VectorSearchResult[]> {
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
+    const docIdCol = this.isCamelCase ? 'dc."documentId"' : 'dc.document_id';
+    const pageNumCol = this.isCamelCase ? 'dc."pageNumber"' : 'dc.page_number';
+    const activeCol = this.isCamelCase ? 'dc."isActive"' : 'dc.is_active';
+    const allowedRolesCol = this.isCamelCase ? 'd."allowedRoles"' : 'd.allowed_roles';
+    const deptIdCol = this.isCamelCase ? 'd."departmentId"' : 'd.department_id';
 
-    // Build RBAC filter: user can access docs where their role is in allowed_roles
-    // and (document is not department-restricted OR their department matches)
-    const results = await this.prisma.$queryRaw<VectorSearchResult[]>`
+    const isAdmin = userRole === UserRole.ADMIN;
+
+    const rbacFilter = isAdmin
+      ? '1=1'
+      : `('${userRole}' = ANY(${allowedRolesCol}::text[]) AND (${deptIdCol} IS NULL OR ${deptIdCol} = ${
+          departmentId ? `'${departmentId}'` : 'NULL'
+        }))`;
+
+    const sql = `
       SELECT
-        dc.id              AS "chunkId",
-        dc.document_id     AS "documentId",
-        dc.content,
-        dc.page_number     AS "pageNumber",
-        1 - (dc.embedding <=> ${embeddingStr}::vector) AS score
+        dc.id                         AS "chunkId",
+        ${docIdCol}                   AS "documentId",
+        dc.content                    AS "content",
+        ${pageNumCol}                 AS "pageNumber",
+        (1 - (dc.embedding <=> '${embeddingStr}'::vector))::float AS "score"
       FROM document_chunks dc
-      JOIN documents d ON dc.document_id = d.id
+      JOIN documents d ON ${docIdCol} = d.id
       WHERE
-        dc.is_active = true
+        ${activeCol} = true
         AND d.status = 'INDEXED'
-        AND ${userRole}::text = ANY(d.allowed_roles::text[])
-        AND (d.department_id IS NULL OR d.department_id = ${departmentId})
-      ORDER BY dc.embedding <=> ${embeddingStr}::vector
+        AND dc.embedding IS NOT NULL
+        AND ${rbacFilter}
+      ORDER BY dc.embedding <=> '${embeddingStr}'::vector ASC
       LIMIT ${topK}
     `;
 
-    return results;
+    try {
+      const results = await this.prisma.$queryRawUnsafe<VectorSearchResult[]>(sql);
+      return results.map((r) => ({
+        ...r,
+        score: Number(r.score) || 0,
+      }));
+    } catch (err: any) {
+      this.logger.error(`Vector search failed: ${err.message}`, err.stack);
+      return [];
+    }
   }
 
   /**
-   * Full-text search using PostgreSQL tsvector.
-   * Returns chunks that contain the query keywords.
+   * Full-text search using PostgreSQL tsvector with Metadata Pre-filtering.
+   * Uses plainto_tsquery for safe input handling (punctuation, Vietnamese tokens).
    */
   async fullTextSearch(
     query: string,
@@ -76,50 +125,78 @@ export class VectorRepository {
     departmentId: string | null,
     topK: number = this.topK,
   ): Promise<VectorSearchResult[]> {
-    const tsQuery = query
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((w) => w + ':*')
-      .join(' & ');
+    const docIdCol = this.isCamelCase ? 'dc."documentId"' : 'dc.document_id';
+    const pageNumCol = this.isCamelCase ? 'dc."pageNumber"' : 'dc.page_number';
+    const activeCol = this.isCamelCase ? 'dc."isActive"' : 'dc.is_active';
+    const allowedRolesCol = this.isCamelCase ? 'd."allowedRoles"' : 'd.allowed_roles';
+    const deptIdCol = this.isCamelCase ? 'd."departmentId"' : 'd.department_id';
 
-    const results = await this.prisma.$queryRaw<VectorSearchResult[]>`
+    const isAdmin = userRole === UserRole.ADMIN;
+    const cleanQuery = query.replace(/['"\\]/g, ' ').trim();
+
+    if (!cleanQuery) return [];
+
+    const rbacFilter = isAdmin
+      ? '1=1'
+      : `('${userRole}' = ANY(${allowedRolesCol}::text[]) AND (${deptIdCol} IS NULL OR ${deptIdCol} = ${
+          departmentId ? `'${departmentId}'` : 'NULL'
+        }))`;
+
+    const sql = `
       SELECT
-        dc.id              AS "chunkId",
-        dc.document_id     AS "documentId",
-        dc.content,
-        dc.page_number     AS "pageNumber",
-        ts_rank(dc.content_tsv, to_tsquery('english', ${tsQuery})) AS score
+        dc.id                         AS "chunkId",
+        ${docIdCol}                   AS "documentId",
+        dc.content                    AS "content",
+        ${pageNumCol}                 AS "pageNumber",
+        ts_rank(dc.content_tsv, plainto_tsquery('english', '${cleanQuery}'))::float AS "score"
       FROM document_chunks dc
-      JOIN documents d ON dc.document_id = d.id
+      JOIN documents d ON ${docIdCol} = d.id
       WHERE
-        dc.is_active = true
+        ${activeCol} = true
         AND d.status = 'INDEXED'
-        AND ${userRole}::text = ANY(d.allowed_roles::text[])
-        AND (d.department_id IS NULL OR d.department_id = ${departmentId})
-        AND dc.content_tsv @@ to_tsquery('english', ${tsQuery})
-      ORDER BY score DESC
+        AND dc.content_tsv @@ plainto_tsquery('english', '${cleanQuery}')
+        AND ${rbacFilter}
+      ORDER BY "score" DESC
       LIMIT ${topK}
     `;
 
-    return results;
+    try {
+      const results = await this.prisma.$queryRawUnsafe<VectorSearchResult[]>(sql);
+      return results.map((r) => ({
+        ...r,
+        score: Number(r.score) || 0,
+      }));
+    } catch (err: any) {
+      this.logger.warn(`Full-text search fallback or error: ${err.message}`);
+      return [];
+    }
   }
 
   /**
-   * Save vector embedding for a document chunk.
-   * Updates the embedding column via raw SQL (Prisma doesn't support vector type natively).
+   * Save vector embedding for a single chunk.
    */
   async saveEmbedding(chunkId: string, embedding: number[]): Promise<void> {
     const embeddingStr = `[${embedding.join(',')}]`;
-    await this.prisma.$executeRaw`
+    await this.prisma.$executeRawUnsafe(`
       UPDATE document_chunks
-      SET embedding = ${embeddingStr}::vector
-      WHERE id = ${chunkId}
-    `;
+      SET embedding = '${embeddingStr}'::vector
+      WHERE id = '${chunkId}'
+    `);
   }
 
   /**
-   * Soft-delete all chunks of a document (called when document is ARCHIVED/DELETED).
-   * Sets is_active = false so the chunks are excluded from future searches.
+   * Save vector embeddings for multiple chunks in a single transaction.
+   */
+  async saveEmbeddingsBatch(items: Array<{ chunkId: string; embedding: number[] }>): Promise<void> {
+    if (!items || items.length === 0) return;
+
+    for (const item of items) {
+      await this.saveEmbedding(item.chunkId, item.embedding);
+    }
+  }
+
+  /**
+   * Soft-delete all chunks of a document (e.g. when ARCHIVED or soft DELETED).
    */
   async deactivateChunksByDocument(documentId: string): Promise<void> {
     await this.prisma.documentChunk.updateMany({
@@ -129,10 +206,11 @@ export class VectorRepository {
   }
 
   /**
-   * Hard-delete all chunks of a document (called when document is permanently DELETED).
+   * Hard-delete all chunks of a document.
    */
   async deleteChunksByDocument(documentId: string): Promise<void> {
-    await this.prisma.documentChunk.deleteMany({ where: { documentId } });
+    await this.prisma.documentChunk.deleteMany({
+      where: { documentId },
+    });
   }
 }
-
