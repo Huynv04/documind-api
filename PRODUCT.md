@@ -46,6 +46,16 @@ Khác với các công cụ tìm kiếm từ khóa truyền thống (dễ bỏ s
       - Click vào chip sẽ kích hoạt ngay ngăn kéo đối chiếu (Citation Drawer / Split-view Panel) bên phải màn hình để đọc trích đoạn gốc (excerpt) và mở tải tệp gốc đối chiếu song song mà không làm gián đoạn luồng chat.
     - **Đánh giá & Kiểm soát Chất lượng (Feedback Loop)**: Like/Dislike từng câu trả lời kèm modal thu thập phản hồi (thông tin sai lệch, tài liệu lỗi thời, câu trả lời thiếu ý).
     - **Tiện ích Công sở (Office Ergonomics)**: Gợi ý câu hỏi mẫu thông minh theo phòng ban (HR, Kỹ thuật, Tài chính), tự động giãn khung nhập liệu (Auto-expanding Textarea), phím tắt `Enter` gửi và `Shift + Enter` xuống dòng.
+  - **Module 5 Frontend: Streaming SSE Thời gian thực, Quản lý Phiên Nâng cao & Feedback Analytics Dashboard**:
+    - **Kết nối SSE Trực tiếp (Native Server-Sent Events)**: Sử dụng luồng đọc `ReadableStream` nhận dữ liệu theo giao thức SSE từ `POST /api/v1/chat/query/stream`, đẩy từng token tức thì về giao diện với độ trễ thấp (<100ms), tự động ngắt khi nhấn nút Dừng.
+    - **Quản trị Phiên Hội thoại Chuyên sâu (Advanced Session Tools)**:
+      - Đổi tên phiên trực tiếp (Inline Rename) bằng phím `Enter` / nút checkmark.
+      - Xóa phiên với hộp thoại xác nhận (Confirmation Dialog) bảo vệ người dùng tránh xóa nhầm dữ liệu.
+      - Xuất tóm tắt phiên làm việc (Export Transcript sang tệp Markdown / `.txt`) để gửi email báo cáo hoặc đính kèm biên bản công việc.
+    - **Trung tâm Giám sát Đánh giá Tri thức (Feedback & Knowledge Quality Dashboard)**:
+      - Thống kê tỷ lệ hài lòng thời gian thực: % Hài lòng, Tổng số câu trả lời, Lượt Thích / Không thích.
+      - Bảng phân tích câu trả lời bị phản hồi tiêu cực (Disliked Answers Review Table) dành riêng cho Knowledge Manager: hiển thị chi tiết câu hỏi, nội dung AI sinh, lý do phân loại (sai lệch, lỗi thời, thiếu ý), người phản hồi và liên kết đối chiếu tài liệu nguồn để kịp thời bổ sung, sửa đổi tài liệu.
+      - Modal phản hồi chi tiết 5 nhóm lý do khi người dùng bấm Dislike câu trả lời.
   - Quản trị: Xem thống kê tổng lượng token tiêu thụ, chi phí ước tính, và danh sách nhật ký kiểm toán (Audit Logs).
 - **Constraints**:
   - Không tự suy đoán thông tin ngoài ngữ cảnh tài liệu nội bộ được cung cấp.

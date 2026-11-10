@@ -4,12 +4,12 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueryRewriterService } from '../rag/query-rewriter.service';
 import { RetrievalService } from '../rag/retrieval.service';
-import { LlmClientService } from '../rag/llm-client.service';
+import { LlmClientService, SourceCitation } from '../rag/llm-client.service';
 import { QueryDto } from './dto/query.dto';
-import { FeedbackDto } from './dto/feedback.dto';
 import { UserRole } from '@prisma/client';
 
 @Injectable()
@@ -85,7 +85,25 @@ export class ChatService {
   }
 
   /**
-   * 4. Delete a session
+   * 4. Update session title
+   */
+  async updateSessionTitle(userId: string, sessionId: string, title: string) {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session || session.userId !== userId) {
+      throw new NotFoundException('Không tìm thấy phiên trò chuyện');
+    }
+
+    return this.prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { title: title.trim() },
+    });
+  }
+
+  /**
+   * 5. Delete a session
    */
   async deleteSession(userId: string, sessionId: string) {
     const session = await this.prisma.chatSession.findUnique({
@@ -104,16 +122,19 @@ export class ChatService {
   }
 
   /**
-   * 5. Process query through RAG pipeline (Non-streaming)
+   * 6. Endpoint đồng bộ: POST /api/v1/chat/query
+   * Thực hiện: Query Rewriting -> Hybrid Retrieval (pgvector + FTS + RBAC) -> Grounded LLM -> Structured JSON
    */
   async processQuery(
     dto: QueryDto,
     user: { id: string; role: UserRole; departmentId?: string },
+    ipAddress?: string,
+    userAgent?: string,
   ) {
     const startTime = Date.now();
     const session = await this.getOrCreateSession(user.id, dto.sessionId);
 
-    // Fetch recent 6 messages for context
+    // Lấy 6 tin nhắn gần nhất để làm ngữ cảnh hội thoại đa lượt
     const recentMessages = await this.prisma.chatMessage.findMany({
       where: { sessionId: session.id },
       orderBy: { createdAt: 'desc' },
@@ -125,10 +146,10 @@ export class ChatService {
       content: m.content,
     }));
 
-    // Step A: Query Rewriting
+    // Bước 1: Query Rewriting
     const rewrittenQuery = await this.rewriter.rewrite(dto.question, history);
 
-    // Save user message
+    // Lưu tin nhắn người dùng
     await this.prisma.chatMessage.create({
       data: {
         sessionId: session.id,
@@ -137,7 +158,7 @@ export class ChatService {
       },
     });
 
-    // Auto-update session title if it's the first turn
+    // Tự động cập nhật tiêu đề phiên chat từ câu hỏi đầu tiên
     if (recentMessages.length === 0) {
       const title = dto.question.slice(0, 40) + (dto.question.length > 40 ? '...' : '');
       await this.prisma.chatSession.update({
@@ -146,7 +167,7 @@ export class ChatService {
       });
     }
 
-    // Step B: Hybrid Retrieval (Vector + FTS + RRF + RBAC Filter)
+    // Bước 2: Hybrid Retrieval (Vector Search + Full-Text Search + RRF + Metadata Pre-filtering)
     const chunks = await this.retrieval.retrieve(
       rewrittenQuery,
       user.role,
@@ -154,7 +175,7 @@ export class ChatService {
       5,
     );
 
-    // Fetch document metadata to attach readable names
+    // Gắn metadata tài liệu (tên file, định dạng)
     const docIds = Array.from(new Set(chunks.map((c) => c.documentId)));
     const docs = await this.prisma.document.findMany({
       where: { id: { in: docIds } },
@@ -168,11 +189,11 @@ export class ChatService {
       mimeType: docMap.get(c.documentId)?.mimeType,
     }));
 
-    // Step C: LLM Grounded Answer Generation
+    // Bước 3: Grounded Answer Generation
     const llmAnswer = await this.llmClient.generateAnswer(rewrittenQuery, enrichedChunks);
     const latencyMs = Date.now() - startTime;
 
-    // Save assistant message
+    // Lưu câu trả lời của trợ lý
     const assistantMessage = await this.prisma.chatMessage.create({
       data: {
         sessionId: session.id,
@@ -186,7 +207,28 @@ export class ChatService {
       },
     });
 
-    // Touch session updatedAt
+    // Ghi nhật ký kiểm toán (AuditLog)
+    await this.prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'QUERY',
+        resourceType: 'CHAT',
+        resourceId: assistantMessage.id,
+        ipAddress,
+        userAgent,
+        metadata: {
+          question: dto.question,
+          rewrittenQuery,
+          confidence: llmAnswer.confidence,
+          sourcesCount: llmAnswer.sources.length,
+          tokensUsed: llmAnswer.tokensUsed,
+          latencyMs,
+          sessionId: session.id,
+        },
+      },
+    });
+
+    // Cập nhật updatedAt của phiên
     await this.prisma.chatSession.update({
       where: { id: session.id },
       data: { updatedAt: new Date() },
@@ -212,35 +254,171 @@ export class ChatService {
   }
 
   /**
-   * 6. Record feedback (Like/Dislike)
+   * 7. Endpoint Streaming: POST /api/v1/chat/query/stream
+   * Stream token qua Server-Sent Events (SSE) theo thời gian thực.
    */
-  async recordFeedback(userId: string, messageId: string, dto: FeedbackDto) {
-    const message = await this.prisma.chatMessage.findUnique({
-      where: { id: messageId },
-    });
+  async streamQuery(
+    dto: QueryDto,
+    user: { id: string; role: UserRole; departmentId?: string },
+    res: Response,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    const startTime = Date.now();
 
-    if (!message) {
-      throw new NotFoundException('Không tìm thấy tin nhắn cần đánh giá');
+    // 1. Cấu hình Headers cho Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
     }
 
-    const feedback = await this.prisma.chatFeedback.upsert({
-      where: {
-        id: `fb_${userId}_${messageId}`, // or fallback
-      },
-      update: {
-        isPositive: dto.isPositive,
-        comment: dto.comment,
-      },
-      create: {
-        id: `fb_${userId}_${messageId}`,
-        messageId,
-        userId,
-        isPositive: dto.isPositive,
-        comment: dto.comment,
+    const session = await this.getOrCreateSession(user.id, dto.sessionId);
+
+    // Lấy lịch sử hội thoại gần nhất
+    const recentMessages = await this.prisma.chatMessage.findMany({
+      where: { sessionId: session.id },
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+    });
+
+    const history = recentMessages.reverse().map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    // Query Rewriting
+    const rewrittenQuery = await this.rewriter.rewrite(dto.question, history);
+
+    // Lưu tin nhắn người dùng
+    await this.prisma.chatMessage.create({
+      data: {
+        sessionId: session.id,
+        role: 'user',
+        content: dto.question,
       },
     });
 
-    return { success: true, message: 'Đã lưu đánh giá phản hồi', feedback };
+    // Gửi event meta ban đầu
+    res.write(
+      `data: ${JSON.stringify({
+        type: 'meta',
+        sessionId: session.id,
+        rewrittenQuery,
+      })}\n\n`,
+    );
+
+    // Auto title nếu là tin nhắn đầu
+    if (recentMessages.length === 0) {
+      const title = dto.question.slice(0, 40) + (dto.question.length > 40 ? '...' : '');
+      await this.prisma.chatSession.update({
+        where: { id: session.id },
+        data: { title },
+      });
+    }
+
+    // Hybrid Retrieval với RBAC Pre-filter
+    const chunks = await this.retrieval.retrieve(
+      rewrittenQuery,
+      user.role,
+      user.departmentId || null,
+      5,
+    );
+
+    // Gắn metadata tên file tài liệu
+    const docIds = Array.from(new Set(chunks.map((c) => c.documentId)));
+    const docs = await this.prisma.document.findMany({
+      where: { id: { in: docIds } },
+      select: { id: true, originalName: true, mimeType: true },
+    });
+    const docMap = new Map(docs.map((d) => [d.id, d]));
+
+    const enrichedChunks = chunks.map((c) => ({
+      ...c,
+      documentName: docMap.get(c.documentId)?.originalName,
+      mimeType: docMap.get(c.documentId)?.mimeType,
+    }));
+
+    let accumulatedContent = '';
+    let finalSources: SourceCitation[] = [];
+    let finalConfidence: 'high' | 'medium' | 'low' = 'high';
+
+    try {
+      // 2. Stream từng token từ LLM
+      for await (const event of this.llmClient.generateAnswerStream(rewrittenQuery, enrichedChunks)) {
+        if (event.type === 'token') {
+          accumulatedContent += event.content;
+          res.write(`data: ${JSON.stringify({ type: 'token', content: event.content })}\n\n`);
+        } else if (event.type === 'sources') {
+          finalSources = event.data.sources.map((s) => ({
+            ...s,
+            documentName: docMap.get(s.documentId)?.originalName,
+          }));
+          finalConfidence = event.data.confidence;
+          res.write(
+            `data: ${JSON.stringify({
+              type: 'sources',
+              data: {
+                sources: finalSources,
+                confidence: finalConfidence,
+              },
+            })}\n\n`,
+          );
+        } else if (event.type === 'error') {
+          res.write(`data: ${JSON.stringify({ type: 'error', message: event.message })}\n\n`);
+        }
+      }
+
+      const latencyMs = Date.now() - startTime;
+
+      // 3. Lưu tin nhắn trợ lý hoàn chỉnh vào database
+      const assistantMessage = await this.prisma.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          role: 'assistant',
+          content: accumulatedContent || 'Tôi không tìm thấy thông tin này trong tài liệu nội bộ.',
+          citations: finalSources as any,
+          confidence: finalConfidence,
+          latencyMs,
+          rewrittenQuery,
+        },
+      });
+
+      // 4. Ghi AuditLog
+      await this.prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'QUERY_STREAM',
+          resourceType: 'CHAT',
+          resourceId: assistantMessage.id,
+          ipAddress,
+          userAgent,
+          metadata: {
+            question: dto.question,
+            rewrittenQuery,
+            latencyMs,
+            sessionId: session.id,
+          },
+        },
+      });
+
+      // Gửi event done kết thúc luồng
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'done',
+          messageId: assistantMessage.id,
+          sessionId: session.id,
+          latencyMs,
+        })}\n\n`,
+      );
+      res.write('data: [DONE]\n\n');
+    } catch (err: any) {
+      this.logger.error(`Stream query error: ${err.message}`, err.stack);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+    } finally {
+      res.end();
+    }
   }
 }
-

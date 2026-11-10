@@ -112,3 +112,28 @@ Giao diện Module 4 (Hỏi đáp Tri thức & Khung Chat Đối chiếu) đư�
    - **Phiên chat mới**: Hiển thị Empty State với các thẻ gợi ý câu hỏi mẫu thông minh theo phòng ban (HR, Kỹ thuật, Tài chính).
    - **Không tìm thấy tài liệu**: Hiển thị thông báo minh bạch, không bịa đặt, gợi ý người dùng đặt câu hỏi khác hoặc liên hệ Quản trị viên tri thức.
 
+---
+
+## 6. Đặc tả Module 5: Streaming SSE & Trung tâm Đánh giá Tri thức (Feedback Dashboard)
+
+### 6.1. Token Streaming Indicator & Controls
+- **Cursor Animation**: `inline-block w-2 h-4 ml-1 bg-indigo-600 dark:bg-indigo-400 animate-pulse align-middle rounded-[1px]`.
+- **Nút Dừng (Stop Stream)**: Màu `rose-600` hover `rose-700` với icon `Square` (Fill), kích hoạt trạng thái dừng mượt mà và bảo lưu toàn bộ văn bản đã nhận.
+
+### 6.2. Advanced Session Tools
+- **Inline Rename**: Click icon bút chì để chuyển tên session thành input field với nút `Check` (Lưu) và `X` (Hủy), hỗ trợ phím `Enter` để lưu nhanh.
+- **Export Transcript**: Tạo tệp Markdown sạch sẽ (`.md`) chứa tiêu đề phiên, danh sách câu hỏi - câu trả lời và liên kết trích dẫn nguồn văn bản.
+- **Delete Confirmation Modal**: Cảnh báo rõ ràng trước khi xóa vĩnh viễn phiên khỏi cơ sở dữ liệu.
+
+### 6.3. Feedback Modal & Quality Dashboard
+- **5 Nhóm lý do góp ý**:
+  - `OUTDATED`: Tài liệu đã lỗi thời / hết hiệu lực (`amber`)
+  - `INCORRECT`: Thông tin câu trả lời bị sai lệch (`rose`)
+  - `INCOMPLETE`: Câu trả lời sơ sài, thiếu ý quan trọng (`purple`)
+  - `CITATION_ERROR`: Trích dẫn nhầm số trang / nhầm tệp (`sky`)
+  - `OTHER`: Lý do khác (`slate`)
+- **Metrics Cards**:
+  - Tỷ lệ hài lòng: Thẻ nổi bật với chỉ số % lớn và thanh đo trực quan (Progress bar).
+  - Lượt thích (Likes) / Lượt không thích (Dislikes) phân chia màu xanh `emerald` và đỏ `rose` tương phản cao.
+- **Bảng rà soát Disliked Answers**: Bảng dữ liệu có phân trang, xem chi tiết câu hỏi, nội dung AI sinh và lý do góp ý của nhân viên để Knowledge Manager xử lý ngay.
+

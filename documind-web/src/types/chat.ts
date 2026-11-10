@@ -8,6 +8,13 @@ export interface CitationItem {
   mimeType?: string;
 }
 
+export type FeedbackReason =
+  | 'OUTDATED'
+  | 'INCORRECT'
+  | 'INCOMPLETE'
+  | 'CITATION_ERROR'
+  | 'OTHER';
+
 export interface ChatMessage {
   id: string;
   sessionId: string;
@@ -22,6 +29,7 @@ export interface ChatMessage {
   feedback?: {
     id?: string;
     isPositive: boolean;
+    reason?: FeedbackReason;
     comment?: string;
   } | null;
 }
@@ -46,3 +54,35 @@ export interface QueryResponse {
   messageId: string;
 }
 
+export interface FeedbackStats {
+  totalAnswers: number;
+  totalFeedbacks: number;
+  totalLikes: number;
+  totalDislikes: number;
+  satisfactionRate: string;
+}
+
+export interface DislikedFeedbackItem {
+  id: string;
+  messageId: string;
+  userId: string;
+  isPositive: boolean;
+  comment?: string | null;
+  createdAt: string;
+  message?: {
+    id: string;
+    content: string;
+    rewrittenQuery?: string | null;
+    confidence?: 'high' | 'medium' | 'low' | null;
+    citations?: any;
+    createdAt: string;
+  };
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    department?: {
+      name: string;
+    } | null;
+  };
+}

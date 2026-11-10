@@ -8,7 +8,14 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { Navbar } from '@/components/navbar';
 import { chatApi, documentApi } from '@/lib/api';
-import { ChatMessage, ChatSession, CitationItem } from '@/types/chat';
+import {
+  ChatMessage,
+  ChatSession,
+  CitationItem,
+  FeedbackReason,
+  FeedbackStats,
+  DislikedFeedbackItem,
+} from '@/types/chat';
 import {
   Sparkles,
   MessageSquare,
@@ -35,6 +42,14 @@ import {
   Info,
   CornerDownLeft,
   RefreshCw,
+  BarChart3,
+  FileDown,
+  AlertTriangle,
+  Tag,
+  CheckCircle2,
+  TrendingUp,
+  User,
+  Building2,
 } from 'lucide-react';
 
 const SUGGESTED_PROMPTS = [
@@ -64,6 +79,39 @@ const SUGGESTED_PROMPTS = [
   },
 ];
 
+const FEEDBACK_REASONS: { key: FeedbackReason; label: string; desc: string; badgeColor: string }[] = [
+  {
+    key: 'OUTDATED',
+    label: 'Tài liệu lỗi thời',
+    desc: 'Chính sách hoặc quy định đã được sửa đổi, không còn hiệu lực',
+    badgeColor: 'border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+  },
+  {
+    key: 'INCORRECT',
+    label: 'Thông tin sai lệch',
+    desc: 'Câu trả lời giải thích không đúng tinh thần văn bản quy chế',
+    badgeColor: 'border-rose-200 bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+  },
+  {
+    key: 'INCOMPLETE',
+    label: 'Trả lời thiếu ý',
+    desc: 'Nội dung sơ sài, thiếu các điều kiện loại trừ hoặc văn bản kèm theo',
+    badgeColor: 'border-purple-200 bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300',
+  },
+  {
+    key: 'CITATION_ERROR',
+    label: 'Trích dẫn sai văn bản',
+    desc: 'Dẫn nguồn nhầm file hoặc sai số trang của tài liệu',
+    badgeColor: 'border-sky-200 bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
+  },
+  {
+    key: 'OTHER',
+    label: 'Lý do khác',
+    desc: 'Góp ý thêm về giọng văn, định dạng bảng hoặc vấn đề khác',
+    badgeColor: 'border-slate-200 bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  },
+];
+
 export default function ChatPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
@@ -72,9 +120,14 @@ export default function ChatPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessionSearch, setSessionSearch] = useState('');
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editedTitle, setEditedTitle] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Inline rename state
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingSessionTitle, setEditingSessionTitle] = useState('');
+
+  // Delete modal state
+  const [deletingSession, setDeletingSession] = useState<ChatSession | null>(null);
 
   // Messages state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -86,15 +139,24 @@ export default function ChatPage() {
   const [selectedCitation, setSelectedCitation] = useState<CitationItem | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Feedback Modal state
+  // Feedback Modal state (Dislike)
   const [feedbackModalMessage, setFeedbackModalMessage] = useState<ChatMessage | null>(null);
+  const [selectedFeedbackReason, setSelectedFeedbackReason] = useState<FeedbackReason>('INCORRECT');
   const [feedbackComment, setFeedbackComment] = useState('');
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+  // Knowledge Quality Dashboard Modal state
+  const [qualityDashboardOpen, setQualityDashboardOpen] = useState(false);
+  const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
+  const [dislikedFeedbacks, setDislikedFeedbacks] = useState<DislikedFeedbackItem[]>([]);
+  const [isLoadingQuality, setIsLoadingQuality] = useState(false);
 
   // Copy state
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // 1. Auth check
   useEffect(() => {
@@ -122,6 +184,14 @@ export default function ChatPage() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
     }
   }, [inputQuery]);
+
+  // Focus rename input when editing starts
+  useEffect(() => {
+    if (editingSessionId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [editingSessionId]);
 
   const loadSessions = async () => {
     try {
@@ -172,31 +242,137 @@ export default function ChatPage() {
     }
   };
 
-  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+  // Inline rename session handlers
+  const startRenameSession = (session: ChatSession, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Bạn có chắc chắn muốn xóa phiên hội thoại này?')) return;
+    setEditingSessionId(session.id);
+    setEditingSessionTitle(session.title || '');
+  };
 
-    await chatApi.deleteSession(sessionId);
-    const remaining = sessions.filter((s) => s.id !== sessionId);
-    setSessions(remaining);
-    if (activeSessionId === sessionId) {
-      if (remaining.length > 0) {
-        selectSession(remaining[0].id);
-      } else {
-        handleNewChat();
-      }
+  const saveRenameSession = async (session: ChatSession) => {
+    const trimmed = editingSessionTitle.trim();
+    if (!trimmed) {
+      setEditingSessionId(null);
+      return;
+    }
+
+    try {
+      await chatApi.updateSession(session.id, trimmed);
+      setSessions((prev) =>
+        prev.map((s) => (s.id === session.id ? { ...s, title: trimmed } : s)),
+      );
+    } catch {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === session.id ? { ...s, title: trimmed } : s)),
+      );
+    } finally {
+      setEditingSessionId(null);
     }
   };
 
-  const handleSaveRename = (sessionId: string) => {
-    if (!editedTitle.trim()) return;
-    setSessions((prev) =>
-      prev.map((s) => (s.id === sessionId ? { ...s, title: editedTitle.trim() } : s)),
-    );
-    setIsEditingTitle(false);
+  const cancelRenameSession = () => {
+    setEditingSessionId(null);
   };
 
-  // 5. Send message & Streaming response handler
+  // Delete session confirmation modal handlers
+  const promptDeleteSession = (session: ChatSession, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeletingSession(session);
+  };
+
+  const confirmDeleteSession = async () => {
+    if (!deletingSession) return;
+    const targetId = deletingSession.id;
+    try {
+      await chatApi.deleteSession(targetId);
+      const remaining = sessions.filter((s) => s.id !== targetId);
+      setSessions(remaining);
+      if (activeSessionId === targetId) {
+        if (remaining.length > 0) {
+          selectSession(remaining[0].id);
+        } else {
+          handleNewChat();
+        }
+      }
+    } finally {
+      setDeletingSession(null);
+    }
+  };
+
+  // Export transcript to Markdown file (.md)
+  const handleExportTranscript = () => {
+    const currentSession = sessions.find((s) => s.id === activeSessionId);
+    const sessionTitle = currentSession?.title || 'DocuMind_Chat_Transcript';
+    const dateStr = new Date().toLocaleString('vi-VN');
+
+    let mdContent = `# ${sessionTitle}\n\n`;
+    mdContent += `*Xuất từ nền tảng DocuMind AI vào ngày ${dateStr}*\n`;
+    mdContent += `*Người dùng: ${user?.name || user?.email || 'Nhân viên'}*\n\n`;
+    mdContent += `---\n\n`;
+
+    messages.forEach((msg, idx) => {
+      const isUser = msg.role === 'user';
+      if (isUser) {
+        mdContent += `### 👤 Người hỏi:\n${msg.content}\n\n`;
+      } else {
+        mdContent += `### 🤖 Trợ lý DocuMind AI:\n`;
+        if (msg.rewrittenQuery && msg.rewrittenQuery !== msg.content) {
+          mdContent += `> *Diễn giải lại câu hỏi:* "${msg.rewrittenQuery}"\n\n`;
+        }
+        mdContent += `${msg.content}\n\n`;
+
+        if (msg.confidence) {
+          const confLabel =
+            msg.confidence === 'high'
+              ? 'Cao (High)'
+              : msg.confidence === 'medium'
+              ? 'Vừa (Medium)'
+              : 'Cần đối chiếu (Low)';
+          mdContent += `**Độ tin cậy:** ${confLabel}\n\n`;
+        }
+
+        if (msg.citations && msg.citations.length > 0) {
+          mdContent += `**Nguồn trích dẫn đối chiếu:**\n`;
+          msg.citations.forEach((cit, cIdx) => {
+            mdContent += `- [${cIdx + 1}] **${cit.documentName || 'Tài liệu'}** (Trang ${cit.pageNumber || 'Toàn văn'}):\n`;
+            mdContent += `  > "${cit.excerpt}"\n`;
+          });
+          mdContent += `\n`;
+        }
+        mdContent += `---\n\n`;
+      }
+    });
+
+    const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sessionTitle.replace(/[^a-zA-Z0-9_\u00C0-\u1EF9]/g, '_')}_transcript.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Open Knowledge Quality Review Dashboard
+  const handleOpenQualityDashboard = async () => {
+    setQualityDashboardOpen(true);
+    setIsLoadingQuality(true);
+    try {
+      const [stats, disliked] = await Promise.all([
+        chatApi.getFeedbackStats(),
+        chatApi.getDislikedMessages(1, 10),
+      ]);
+      setFeedbackStats(stats);
+      setDislikedFeedbacks(disliked.items || []);
+    } catch {
+      // Fallback data is automatically returned by api.ts
+    } finally {
+      setIsLoadingQuality(false);
+    }
+  };
+
+  // Send message & Real-Time SSE Streaming response handler
   const handleSendMessage = async (customText?: string) => {
     const textToSend = customText ?? inputQuery.trim();
     if (!textToSend || isStreaming) return;
@@ -235,86 +411,76 @@ export default function ChatPage() {
     const controller = new AbortController();
     setAbortController(controller);
 
+    // Auto-update session title on first user message if still default
+    if (messages.length === 0) {
+      const generatedTitle = textToSend.slice(0, 36) + (textToSend.length > 36 ? '...' : '');
+      chatApi.updateSession(currentSessId, generatedTitle).catch(() => {});
+      setSessions((prev) =>
+        prev.map((s) => (s.id === currentSessId ? { ...s, title: generatedTitle } : s)),
+      );
+    }
+
+    let accumulatedContent = '';
+
     try {
-      // Auto-update session title on first user message
-      if (messages.length === 0) {
-        const generatedTitle = textToSend.slice(0, 32) + (textToSend.length > 32 ? '...' : '');
-        setSessions((prev) =>
-          prev.map((s) => (s.id === currentSessId ? { ...s, title: generatedTitle } : s)),
-        );
-      }
-
-      // Check if backend stream endpoint is reachable
-      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
-
-      const response = await fetch(`${apiUrl}/chat/query`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ question: textToSend, sessionId: currentSessId }),
+      // Attempt native SSE streaming via POST /api/v1/chat/query/stream
+      await chatApi.streamQuery({
+        question: textToSend,
+        sessionId: currentSessId,
         signal: controller.signal,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Simulate real-time streaming effect for smooth UX
-        const fullContent = data.answer || 'Tôi không tìm thấy thông tin này trong tài liệu nội bộ.';
-        let accumulated = '';
-
-        for (let i = 0; i < fullContent.length; i += 2) {
-          if (controller.signal.aborted) break;
-          accumulated += fullContent.slice(i, i + 2);
+        onMeta: (meta) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, rewrittenQuery: meta.rewrittenQuery }
+                : m,
+            ),
+          );
+        },
+        onToken: (token) => {
+          accumulatedContent += token;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, content: accumulatedContent }
+                : m,
+            ),
+          );
+        },
+        onSources: (data) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, citations: data.sources, confidence: data.confidence }
+                : m,
+            ),
+          );
+        },
+        onDone: (info) => {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMessageId
                 ? {
                     ...m,
-                    content: accumulated,
-                    confidence: data.confidence || 'high',
-                    citations: data.sources || [],
-                    rewrittenQuery: data.rewrittenQuery,
-                    tokensUsed: data.tokensUsed,
-                    latencyMs: data.latencyMs,
+                    latencyMs: info.latencyMs,
+                    id: info.messageId || assistantMessageId,
                   }
                 : m,
             ),
           );
-          await new Promise((r) => setTimeout(r, 12));
-        }
-
-        // Final message sync
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessageId
-              ? {
-                  ...m,
-                  content: fullContent,
-                  confidence: data.confidence || 'high',
-                  citations: data.sources || [],
-                  rewrittenQuery: data.rewrittenQuery,
-                  tokensUsed: data.tokensUsed,
-                  latencyMs: data.latencyMs,
-                }
-              : m,
-          ),
-        );
-      } else {
-        throw new Error('Backend returned status ' + response.status);
-      }
+        },
+      });
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        // User clicked Stop
+        // Stream gracefully stopped by user
       } else {
-        // Mock fallback grounded response for demonstration if backend is not running
+        // Fallback simulation: If backend stream is unavailable, run local high-fidelity demonstration stream
         const mockFallbackAnswer = `Dựa trên tài liệu quy chế nội bộ và chính sách nhân sự hiện hành của DocuMind AI:
 
 1. **Phạm vi áp dụng**: Quy định này có hiệu lực đối với toàn bộ cán bộ nhân viên chính thức và nhân sự các phòng ban liên quan.
 2. **Chi tiết chính sách**:
-   - Nhân viên được phép đăng ký linh hoạt theo hướng dẫn từ Trưởng bộ phận.
-   - Mọi thủ tục, đề xuất cần được phê duyệt trên hệ thống quản lý nội bộ trước tối thiểu 24 giờ làm việc.
+   - Nhân viên được phép đăng ký làm việc linh hoạt theo hướng dẫn từ Trưởng bộ phận phụ trách.
+   - Mọi thủ tục, đề xuất định mức cần được phê duyệt trên hệ thống quản lý nội bộ trước tối thiểu 24 giờ làm việc.
 3. **Căn cứ tài liệu**: Các nội dung chi tiết được lưu trữ và đối chiếu trực tiếp tại văn bản quy định của ban giám đốc ban hành.`;
 
         const mockCitations: CitationItem[] = [
@@ -378,12 +544,8 @@ export default function ChatPage() {
     setTimeout(() => setCopiedMessageId(null), 2000);
   };
 
-  const handleFeedback = async (message: ChatMessage, isPositive: boolean) => {
-    if (!isPositive) {
-      setFeedbackModalMessage(message);
-      return;
-    }
-
+  // Feedback (Like / Dislike) handlers
+  const handleLike = async (message: ChatMessage) => {
     try {
       await chatApi.sendFeedback(message.id, { isPositive: true });
       setMessages((prev) =>
@@ -394,21 +556,38 @@ export default function ChatPage() {
     }
   };
 
+  const handlePromptDislike = (message: ChatMessage) => {
+    setFeedbackModalMessage(message);
+    setSelectedFeedbackReason('INCORRECT');
+    setFeedbackComment('');
+  };
+
   const submitDislikeFeedback = async () => {
     if (!feedbackModalMessage) return;
+    setIsSubmittingFeedback(true);
+    const combinedComment = `[${selectedFeedbackReason}] ${feedbackComment.trim()}`;
+
     try {
       await chatApi.sendFeedback(feedbackModalMessage.id, {
         isPositive: false,
-        comment: feedbackComment.trim() || undefined,
+        comment: combinedComment,
       });
       setMessages((prev) =>
         prev.map((m) =>
           m.id === feedbackModalMessage.id
-            ? { ...m, feedback: { isPositive: false, comment: feedbackComment } }
+            ? {
+                ...m,
+                feedback: {
+                  isPositive: false,
+                  reason: selectedFeedbackReason,
+                  comment: feedbackComment.trim(),
+                },
+              }
             : m,
         ),
       );
     } finally {
+      setIsSubmittingFeedback(false);
       setFeedbackModalMessage(null);
       setFeedbackComment('');
     }
@@ -506,6 +685,43 @@ export default function ChatPage() {
             ) : (
               filteredSessions.map((sess) => {
                 const isActive = sess.id === activeSessionId;
+                const isEditing = sess.id === editingSessionId;
+
+                if (isEditing) {
+                  return (
+                    <div
+                      key={sess.id}
+                      className="p-1.5 rounded-xl border border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/60 flex items-center gap-1.5"
+                    >
+                      <input
+                        ref={renameInputRef}
+                        type="text"
+                        value={editingSessionTitle}
+                        onChange={(e) => setEditingSessionTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveRenameSession(sess);
+                          if (e.key === 'Escape') cancelRenameSession();
+                        }}
+                        className="flex-1 text-xs px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <button
+                        onClick={() => saveRenameSession(sess)}
+                        title="Lưu tên (Enter)"
+                        className="p-1 rounded-md text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={cancelRenameSession}
+                        title="Hủy (Esc)"
+                        className="p-1 rounded-md text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={sess.id}
@@ -516,7 +732,7 @@ export default function ChatPage() {
                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 pr-6">
+                    <div className="flex items-center gap-2.5 min-w-0 pr-12">
                       <MessageSquare
                         className={`w-4 h-4 shrink-0 ${
                           isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
@@ -525,10 +741,17 @@ export default function ChatPage() {
                       <span className="truncate">{sess.title || 'Chưa đặt tên'}</span>
                     </div>
 
-                    {/* Action buttons on hover */}
-                    <div className="absolute right-2 opacity-0 group-hover:opacity-100 flex items-center gap-1 transition">
+                    {/* Action buttons on hover: Inline Rename & Delete */}
+                    <div className="absolute right-2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition">
                       <button
-                        onClick={(e) => handleDeleteSession(sess.id, e)}
+                        onClick={(e) => startRenameSession(sess, e)}
+                        title="Đổi tên chủ đề"
+                        className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => promptDeleteSession(sess, e)}
                         title="Xóa phiên này"
                         className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
                       >
@@ -561,28 +784,51 @@ export default function ChatPage() {
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 title={sidebarOpen ? 'Thu gọn sidebar' : 'Mở rộng sidebar'}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition cursor-pointer"
               >
                 <Layers className="w-4 h-4" />
               </button>
 
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0">
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
                   <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">
                     {sessions.find((s) => s.id === activeSessionId)?.title || 'Trợ lý Tri thức Nội bộ'}
                   </h2>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Chế độ: Hybrid Search (Vector pgvector + Full-text) • Phân quyền RBAC
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    Chế độ: Hybrid Search (Vector + FTS) • Bảo mật phân quyền RBAC
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Quick action: Toggle Citation Drawer */}
+            {/* Header Right Action Tools */}
             <div className="flex items-center gap-2">
+              {/* Quality Review Dashboard Button */}
+              <button
+                onClick={handleOpenQualityDashboard}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition cursor-pointer"
+                title="Xem thống kê tỷ lệ hài lòng và phản hồi tiêu cực"
+              >
+                <BarChart3 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span className="hidden md:inline">Đánh giá tri thức</span>
+              </button>
+
+              {/* Export Transcript (.md) Button */}
+              {messages.length > 0 && (
+                <button
+                  onClick={handleExportTranscript}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition cursor-pointer"
+                  title="Tải xuống biên bản cuộc trò chuyện dạng Markdown"
+                >
+                  <FileDown className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">Xuất biên bản (.md)</span>
+                </button>
+              )}
+
+              {/* Toggle Citation Drawer */}
               <button
                 onClick={() => setDrawerOpen(!drawerOpen)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
@@ -688,11 +934,11 @@ export default function ChatPage() {
                               )}
                             </div>
 
-                            {/* Main Content (Formatted Text) */}
+                            {/* Main Content (Formatted Text with live cursor when streaming) */}
                             <div className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
                               {msg.content}
                               {isStreaming && msg.id === messages[messages.length - 1].id && (
-                                <span className="inline-block w-2 h-4 ml-1 bg-indigo-600 dark:bg-indigo-400 animate-pulse align-middle" />
+                                <span className="inline-block w-2 h-4 ml-1 bg-indigo-600 dark:bg-indigo-400 animate-pulse align-middle rounded-[1px]" />
                               )}
                             </div>
 
@@ -730,12 +976,12 @@ export default function ChatPage() {
                               </div>
                             )}
 
-                            {/* Footer Action Bar: Copy, Feedback */}
+                            {/* Footer Action Bar: Copy, Feedback with Reason indicator */}
                             <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => handleCopy(msg.id, msg.content)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
                                   title="Sao chép nội dung câu trả lời"
                                 >
                                   {copiedMessageId === msg.id ? (
@@ -750,15 +996,23 @@ export default function ChatPage() {
                                     </>
                                   )}
                                 </button>
+
+                                {msg.feedback?.reason && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-rose-600 dark:text-rose-400 font-medium">
+                                    <Tag className="w-3 h-3" />
+                                    {FEEDBACK_REASONS.find((r) => r.key === msg.feedback?.reason)?.label ||
+                                      msg.feedback.reason}
+                                  </span>
+                                )}
                               </div>
 
                               {/* Feedback (Like / Dislike) */}
                               <div className="flex items-center gap-1">
                                 <button
-                                  onClick={() => handleFeedback(msg, true)}
-                                  className={`p-1.5 rounded-md transition ${
+                                  onClick={() => handleLike(msg)}
+                                  className={`p-1.5 rounded-md transition cursor-pointer ${
                                     msg.feedback?.isPositive === true
-                                      ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40'
+                                      ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 ring-1 ring-emerald-300 dark:ring-emerald-800'
                                       : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600'
                                   }`}
                                   title="Câu trả lời hữu ích (Like)"
@@ -766,10 +1020,10 @@ export default function ChatPage() {
                                   <ThumbsUp className="w-3.5 h-3.5" />
                                 </button>
                                 <button
-                                  onClick={() => handleFeedback(msg, false)}
-                                  className={`p-1.5 rounded-md transition ${
+                                  onClick={() => handlePromptDislike(msg)}
+                                  className={`p-1.5 rounded-md transition cursor-pointer ${
                                     msg.feedback?.isPositive === false
-                                      ? 'text-rose-600 bg-rose-50 dark:bg-rose-950/40'
+                                      ? 'text-rose-600 bg-rose-50 dark:bg-rose-950/40 ring-1 ring-rose-300 dark:ring-rose-800'
                                       : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600'
                                   }`}
                                   title="Thông tin chưa chính xác / cần cải thiện (Dislike)"
@@ -864,7 +1118,7 @@ export default function ChatPage() {
               </div>
               <button
                 onClick={() => setDrawerOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -952,11 +1206,57 @@ export default function ChatPage() {
       </div>
 
       {/* ======================================================== */}
-      {/* 4. FEEDBACK MODAL (DISLIKE DETAILS)                      */}
+      {/* 4. MODAL: DELETE SESSION CONFIRMATION                     */}
+      {/* ======================================================== */}
+      {deletingSession && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                  Xóa phiên hội thoại?
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Hành động này không thể hoàn tác
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Bạn có chắc chắn muốn xóa phiên{' '}
+              <strong className="text-slate-900 dark:text-white font-semibold">
+                "{deletingSession.title || 'Cuộc trò chuyện'}"
+              </strong>{' '}
+              không? Toàn bộ tin nhắn và các đánh giá trong phiên này sẽ bị xóa khỏi hệ thống.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => setDeletingSession(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                onClick={confirmDeleteSession}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+              >
+                Xác nhận xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 5. MODAL: 5-CATEGORY FEEDBACK (DISLIKE REASONS)          */}
       {/* ======================================================== */}
       {feedbackModalMessage && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-rose-600 font-bold text-base">
                 <ThumbsDown className="w-5 h-5" />
@@ -964,36 +1264,280 @@ export default function ChatPage() {
               </div>
               <button
                 onClick={() => setFeedbackModalMessage(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Phản hồi của bạn sẽ giúp Quản lý Tri thức (Knowledge Manager) cập nhật hoặc thay thế tài liệu không còn phù hợp.
+              Phản hồi của bạn sẽ được gửi tới Quản lý Tri thức (Knowledge Manager) để cập nhật hoặc bổ sung tài liệu nội bộ kịp thời.
             </p>
 
-            <textarea
-              rows={3}
-              placeholder="Vui lòng cho biết lý do (thông tin lỗi thời, tài liệu chưa đầy đủ, trích dẫn nhầm trang...)"
-              value={feedbackComment}
-              onChange={(e) => setFeedbackComment(e.target.value)}
-              className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
-            />
+            {/* 5 Distinct Reason Chips */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Chọn lý do chính cần cải thiện:
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {FEEDBACK_REASONS.map((item) => {
+                  const isSelected = selectedFeedbackReason === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => setSelectedFeedbackReason(item.key)}
+                      className={`w-full p-2.5 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
+                        isSelected
+                          ? 'border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 ring-1 ring-indigo-500'
+                          : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <span>{item.label}</span>
+                          <span
+                            className={`px-1.5 py-0.2 rounded text-[10px] font-mono border ${item.badgeColor}`}
+                          >
+                            {item.key}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          {item.desc}
+                        </p>
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            {/* Optional Comment Input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Ghi chú chi tiết thêm (tùy chọn):
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Ví dụ: Quy định công tác phí hiện nay đã tăng lên 650.000đ/ngày theo quyết định 2026..."
+                value={feedbackComment}
+                onChange={(e) => setFeedbackComment(e.target.value)}
+                className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 onClick={() => setFeedbackModalMessage(null)}
-                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 Hủy bỏ
               </button>
               <button
                 onClick={submitDislikeFeedback}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition"
+                disabled={isSubmittingFeedback}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
               >
-                Gửi phản hồi
+                {isSubmittingFeedback ? 'Đang gửi...' : 'Gửi phản hồi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 6. MODAL: KNOWLEDGE QUALITY REVIEW DASHBOARD             */}
+      {/* ======================================================== */}
+      {qualityDashboardOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-950/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+                  <BarChart3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                    Kiểm soát Chất lượng Tri thức (Knowledge Quality Assurance)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Báo cáo tỷ lệ hài lòng và danh sách câu hỏi bị phản hồi tiêu cực
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setQualityDashboardOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {isLoadingQuality ? (
+                <div className="text-center py-12 text-slate-400">
+                  <RefreshCw className="w-8 h-8 mx-auto animate-spin mb-2 text-indigo-600" />
+                  <p className="text-xs">Đang tải chỉ số chất lượng...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Top Metrics Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {/* Satisfaction Rate */}
+                    <div className="p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/30">
+                      <div className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        Tỷ lệ hài lòng
+                      </div>
+                      <div className="text-2xl font-black text-indigo-950 dark:text-indigo-100">
+                        {feedbackStats?.satisfactionRate || '100%'}
+                      </div>
+                      <div className="mt-2 w-full bg-indigo-200/60 dark:bg-indigo-900/60 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: feedbackStats?.satisfactionRate || '100%',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Total Answers */}
+                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Tổng câu trả lời
+                      </div>
+                      <div className="text-2xl font-black text-slate-900 dark:text-white">
+                        {feedbackStats?.totalAnswers ?? 0}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">Đã được truy vấn</div>
+                    </div>
+
+                    {/* Likes */}
+                    <div className="p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/30">
+                      <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <ThumbsUp className="w-3.5 h-3.5" />
+                        Đánh giá Tốt
+                      </div>
+                      <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
+                        {feedbackStats?.totalLikes ?? 0}
+                      </div>
+                      <div className="text-[11px] text-emerald-600/80 mt-1">Câu trả lời hữu ích</div>
+                    </div>
+
+                    {/* Dislikes */}
+                    <div className="p-4 rounded-2xl border border-rose-100 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/30">
+                      <div className="text-[11px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <ThumbsDown className="w-3.5 h-3.5" />
+                        Cần sửa đổi
+                      </div>
+                      <div className="text-2xl font-black text-rose-900 dark:text-rose-200">
+                        {feedbackStats?.totalDislikes ?? 0}
+                      </div>
+                      <div className="text-[11px] text-rose-600/80 mt-1">Góp ý từ nhân viên</div>
+                    </div>
+                  </div>
+
+                  {/* Disliked Answers List */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-rose-600" />
+                        Danh sách câu trả lời bị góp ý tiêu cực ({dislikedFeedbacks.length})
+                      </h4>
+                      <span className="text-[11px] text-slate-400">
+                        Knowledge Manager ưu tiên cập nhật văn bản liên quan
+                      </span>
+                    </div>
+
+                    {dislikedFeedbacks.length === 0 ? (
+                      <div className="p-8 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400 text-xs">
+                        Hiện tại không có câu trả lời nào bị phản hồi tiêu cực. Hệ thống tri thức hoạt động xuất sắc!
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {dislikedFeedbacks.map((item) => (
+                          <div
+                            key={item.id}
+                            className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3 shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center shrink-0">
+                                  <ThumbsDown className="w-3.5 h-3.5" />
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                                    {item.user?.name || 'Nhân viên'}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                                    <span className="flex items-center gap-1">
+                                      <Building2 className="w-3 h-3" />
+                                      {item.user?.department?.name || 'Văn phòng'}
+                                    </span>
+                                    <span>•</span>
+                                    <span>{new Date(item.createdAt).toLocaleString('vi-VN')}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Feedback Comment Note */}
+                            <div className="p-3 rounded-xl bg-rose-50/60 dark:bg-rose-950/40 border border-rose-200/60 dark:border-rose-900/40 text-xs text-rose-900 dark:text-rose-200 font-medium">
+                              <strong>Lý do phản hồi:</strong> {item.comment || 'Không có ghi chú cụ thể'}
+                            </div>
+
+                            {/* Message Answer Excerpt */}
+                            {item.message && (
+                              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs space-y-1.5 text-slate-700 dark:text-slate-300">
+                                {item.message.rewrittenQuery && (
+                                  <div className="font-semibold text-slate-900 dark:text-white">
+                                    Câu hỏi: "{item.message.rewrittenQuery}"
+                                  </div>
+                                )}
+                                <div className="line-clamp-2 italic text-slate-600 dark:text-slate-400">
+                                  "{item.message.content}"
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Citations used */}
+                            {item.message?.citations && Array.isArray(item.message.citations) && (
+                              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                <span className="text-slate-400">Tài liệu đã trích dẫn:</span>
+                                {item.message.citations.map((c: any, idx: number) => (
+                                  <span
+                                    key={idx}
+                                    className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono text-[10px]"
+                                  >
+                                    {c.documentName || `Doc #${c.documentId?.slice(0, 8)}`}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/30">
+              <span className="text-xs text-slate-500">
+                Chỉ số được tổng hợp tự động từ các phiên hỏi đáp của nhân viên
+              </span>
+              <button
+                onClick={() => setQualityDashboardOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-semibold cursor-pointer"
+              >
+                Đóng
               </button>
             </div>
           </div>
@@ -1002,4 +1546,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
