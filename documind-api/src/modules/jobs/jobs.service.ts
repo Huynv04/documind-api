@@ -23,7 +23,7 @@ export class JobsService {
     @Optional()
     @InjectQueue('ingestion')
     private readonly ingestionQueue?: Queue,
-  ) {}
+  ) { }
 
   /**
    * Lấy chỉ số sức khỏe hàng đợi BullMQ và hiệu năng Ingestion Worker
@@ -235,3 +235,4 @@ export class JobsService {
   }
 }
 
+//tesst
