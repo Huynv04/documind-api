@@ -95,6 +95,14 @@ export default function HomePage() {
               </div>
 
               <Link
+                href="/chat"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-semibold text-xs transition shadow-sm"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Hỏi đáp Tri thức (RAG Chat)
+              </Link>
+
+              <Link
                 href="/documents"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-indigo-900 font-semibold text-xs hover:bg-indigo-50 transition shadow-sm"
               >
@@ -194,21 +202,27 @@ export default function HomePage() {
               </span>
             </div>
 
-            {/* Module 4 & 5: RAG & Chat */}
-            <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-start justify-between">
+            {/* Module 4: Active RAG & Chat Workspace */}
+            <Link
+              href="/chat"
+              className="p-5 rounded-2xl border-2 border-indigo-500/40 bg-white dark:bg-slate-900/80 hover:border-indigo-500 transition group flex items-start justify-between shadow-sm"
+            >
               <div>
                 <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center mb-3">
                   <MessageSquare className="w-5 h-5" />
                 </div>
-                <h3 className="font-semibold text-sm">Module 4 & 5: RAG & Chat Trực quan</h3>
+                <h3 className="font-semibold text-sm group-hover:text-indigo-600 transition flex items-center gap-1.5">
+                  Module 4: Khung Chat Đối chiếu Tri thức
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
+                </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Hybrid Search (pgvector + BM25), SSE token streaming, trích dẫn nguồn văn bản.
+                  Hỏi đáp đa lượt với Query Rewriting, Streaming SSE từng token, đối chiếu song song với Citation Drawer.
                 </p>
               </div>
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
-                Chờ nạp
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 shrink-0">
+                Đang mở
               </span>
-            </div>
+            </Link>
 
             {/* Module 6: Admin */}
             <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-start justify-between">

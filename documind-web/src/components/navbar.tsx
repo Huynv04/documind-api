@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { Sparkles, FileText, Home, LogOut } from 'lucide-react';
+import { Sparkles, FileText, Home, LogOut, MessageSquare } from 'lucide-react';
 
 export function Navbar() {
   const { user, logout } = useAuth();
@@ -36,6 +36,7 @@ export function Navbar() {
 
   const navLinks = [
     { href: '/', label: 'Tổng quan', icon: Home },
+    { href: '/chat', label: 'Hỏi đáp Tri thức', icon: MessageSquare },
     { href: '/documents', label: 'Kho Tài liệu', icon: FileText },
   ];
 

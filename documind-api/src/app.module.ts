@@ -8,6 +8,7 @@ import { BullModule } from '@nestjs/bull';
 import envConfig from '@config/env.config';
 import { AuthModule } from '@modules/auth/auth.module';
 import { DocumentModule } from '@modules/document/document.module';
+import { ChatModule } from '@modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { DocumentModule } from '@modules/document/document.module';
     // --- Feature Modules ---
     AuthModule,
     DocumentModule,
+    ChatModule,
   ],
 })
 export class AppModule {}

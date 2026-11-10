@@ -36,7 +36,16 @@ Khác với các công cụ tìm kiếm từ khóa truyền thống (dễ bỏ s
   - Phân quyền theo vai trò (RBAC): `EMPLOYEE`, `KNOWLEDGE_MANAGER`, `ADMIN`.
   - Quản lý tài liệu: Tải lên kéo thả, theo dõi trạng thái xử lý bất đồng bộ (`UPLOADING`, `PROCESSING`, `INDEXED`, `FAILED`, `ARCHIVED`, `DELETED`), gắn thẻ và gán phòng ban.
   - Giám sát hàng đợi nạp ngầm & Soi Chunks (Module 3): Giám sát trạng thái Pipeline thời gian thực (Storage → Parser → Chunking → Batch Embedding → pgvector Indexing), kiểm tra cấu trúc từng đoạn văn bản đã bẻ (Chunk Inspector: token count, page index, nội dung trích xuất), và cơ chế kích hoạt thử lại (Retry Ingestion) cho các tệp thất bại.
-  - Trò chuyện & Tra cứu: Hỏi đáp đa lượt (Multi-turn Chat với Query Rewriting), Streaming phản hồi từng ký tự qua Server-Sent Events (SSE), hiển thị nguồn trích dẫn (Citations) chính xác kèm trích đoạn gốc, đánh giá câu trả lời (Like/Dislike feedback).
+  - **Trò chuyện Đa lượt & Tra cứu Tri thức Split-view (Module 4 Frontend - Chat & Retrieval Workspace)**:
+    - **Quản lý Phiên trò chuyện (Multi-turn Sessions)**: Danh sách phiên hỏi đáp theo dòng thời gian (Hôm nay, 7 ngày trước, Cũ hơn), tạo phiên mới (`New Chat`), đổi tên chủ đề hội thoại và xóa phiên.
+    - **Hội thoại Đa lượt thông minh (Query Rewriting Feedback)**: Hiển thị minh bạch câu hỏi đã được viết lại (Rewritten Query) để người dùng hiểu AI đã xâu chuỗi ngữ cảnh trước đó ra sao.
+    - **Streaming SSE thời gian thực (Real-time Token Streaming)**: Phản hồi gõ chữ từng ký tự mượt mà kèm con trỏ nhấp nháy, hỗ trợ nút "Dừng tạo phản hồi" (Stop Generating).
+    - **Trình bày Markdown Phong phú**: Hỗ trợ hiển thị bảng biểu, danh sách gạch đầu dòng/đánh số, code block kèm nút sao chép nhanh, blockquote và in đậm thuật ngữ chuyên môn.
+    - **Hệ thống Nguồn trích dẫn Đối chiếu (Interactive Citations & Split-view Drawer)**:
+      - Mỗi câu trả lời đính kèm danh sách thẻ trích dẫn (Citation chips) với tên tài liệu, số trang, điểm tương đồng.
+      - Click vào chip sẽ kích hoạt ngay ngăn kéo đối chiếu (Citation Drawer / Split-view Panel) bên phải màn hình để đọc trích đoạn gốc (excerpt) và mở tải tệp gốc đối chiếu song song mà không làm gián đoạn luồng chat.
+    - **Đánh giá & Kiểm soát Chất lượng (Feedback Loop)**: Like/Dislike từng câu trả lời kèm modal thu thập phản hồi (thông tin sai lệch, tài liệu lỗi thời, câu trả lời thiếu ý).
+    - **Tiện ích Công sở (Office Ergonomics)**: Gợi ý câu hỏi mẫu thông minh theo phòng ban (HR, Kỹ thuật, Tài chính), tự động giãn khung nhập liệu (Auto-expanding Textarea), phím tắt `Enter` gửi và `Shift + Enter` xuống dòng.
   - Quản trị: Xem thống kê tổng lượng token tiêu thụ, chi phí ước tính, và danh sách nhật ký kiểm toán (Audit Logs).
 - **Constraints**:
   - Không tự suy đoán thông tin ngoài ngữ cảnh tài liệu nội bộ được cung cấp.
