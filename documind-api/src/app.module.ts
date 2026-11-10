@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { LoggerModule } from 'nestjs-pino';
+import { BullModule } from '@nestjs/bull';
 
 import envConfig from '@config/env.config';
 import { AuthModule } from '@modules/auth/auth.module';
+import { DocumentModule } from '@modules/document/document.module';
 
 @Module({
   imports: [
@@ -37,9 +39,21 @@ import { AuthModule } from '@modules/auth/auth.module';
     // --- Events ---
     EventEmitterModule.forRoot(),
 
+    // --- BullMQ Queue Root Config ---
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        redis: {
+          host: config.get('REDIS_HOST', 'localhost'),
+          port: config.get('REDIS_PORT', 6379),
+          password: config.get('REDIS_PASSWORD') || undefined,
+        },
+      }),
+    }),
+
     // --- Feature Modules ---
-    AuthModule
+    AuthModule,
+    DocumentModule,
   ],
 })
-export class AppModule { }
-
+export class AppModule {}

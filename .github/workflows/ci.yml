@@ -2,9 +2,9 @@ name: DocuMind CI Pipeline
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, develop]
   pull_request:
-    branches: [main, master]
+    branches: [main, develop]
 
 jobs:
   # ============================================================
@@ -70,7 +70,7 @@ jobs:
         run: npx eslint "{src,apps,libs,test}/**/*.ts"
 
       - name: Run unit & integration tests
-        run: npm run test -- --passWithNoTests
+        run: npm run test
         env:
           DATABASE_URL: postgresql://documind:documind_pass@localhost:5432/documind_test?schema=public
           REDIS_HOST: localhost
