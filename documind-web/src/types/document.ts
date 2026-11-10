@@ -57,5 +57,6 @@ export interface QueryDocumentParams {
   limit?: number;
   status?: DocumentStatus;
   sensitivity?: SensitivityLevel;
+  departmentId?: string;
   search?: string;
 }

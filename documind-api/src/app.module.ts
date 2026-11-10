@@ -10,6 +10,7 @@ import { AuthModule } from '@modules/auth/auth.module';
 import { DocumentModule } from '@modules/document/document.module';
 import { ChatModule } from '@modules/chat/chat.module';
 import { AdminModule } from '@modules/admin/admin.module';
+import { JobsModule } from '@modules/jobs/jobs.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AdminModule } from '@modules/admin/admin.module';
     DocumentModule,
     ChatModule,
     AdminModule,
+    JobsModule,
   ],
 })
 export class AppModule {}

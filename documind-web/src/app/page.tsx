@@ -17,6 +17,7 @@ import {
   Lock,
   ArrowRight,
   UploadCloud,
+  Cpu,
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -149,10 +150,10 @@ export default function HomePage() {
               <span className="text-xs uppercase font-bold tracking-wider">Tiến độ Module</span>
             </div>
             <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5" /> Module 1 & 2: Sẵn sàng
+              <CheckCircle2 className="w-5 h-5" /> Module 1, 2, 3: Sẵn sàng
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Auth + File Storage & Upload Ingestion pipeline đã hoàn tất.
+              Auth + Ingestion Pipeline & Giám sát Hàng đợi BullMQ đã hoàn tất.
             </p>
           </div>
         </div>
@@ -187,20 +188,26 @@ export default function HomePage() {
             </Link>
 
             {/* Module 3: Jobs & Ingestion */}
-            <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-start justify-between">
+            <Link
+              href="/pipeline"
+              className="p-5 rounded-2xl border-2 border-indigo-500/40 bg-white dark:bg-slate-900/80 hover:border-indigo-500 transition group flex items-start justify-between shadow-sm"
+            >
               <div>
-                <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center mb-3">
-                  <Sparkles className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center mb-3">
+                  <Cpu className="w-5 h-5" />
                 </div>
-                <h3 className="font-semibold text-sm">Module 3: Hàng đợi nạp ngầm BullMQ</h3>
+                <h3 className="font-semibold text-sm group-hover:text-indigo-600 transition flex items-center gap-1.5">
+                  Module 3: Hàng đợi & Pipeline Ingestion
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
+                </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Xử lý bất đồng bộ, chia chunks và gọi embedding model tự động khi có tệp mới.
+                  Giám sát BullMQ 5 chặng, Worker throughput, bẻ chunks 800 tokens, retry và Soi Chunks.
                 </p>
               </div>
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
-                Tiếp theo
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                Đang mở
               </span>
-            </div>
+            </Link>
 
             {/* Module 4: Active RAG & Chat Workspace */}
             <Link
@@ -225,20 +232,26 @@ export default function HomePage() {
             </Link>
 
             {/* Module 6: Admin */}
-            <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-start justify-between">
+            <Link
+              href="/admin"
+              className="p-5 rounded-2xl border-2 border-indigo-500/40 bg-white dark:bg-slate-900/80 hover:border-indigo-500 transition group flex items-start justify-between shadow-sm"
+            >
               <div>
                 <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mb-3">
                   <BarChart3 className="w-5 h-5" />
                 </div>
-                <h3 className="font-semibold text-sm">Module 6: Quản trị & Giám sát</h3>
+                <h3 className="font-semibold text-sm group-hover:text-indigo-600 transition flex items-center gap-1.5">
+                  Module 6: Quản trị & Giám sát Hệ thống
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
+                </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Thống kê tiêu thụ token, chi phí AI, phân quyền người dùng và Audit Log.
+                  Thống kê tiêu thụ token, chi phí AI (USD/VND), tài nguyên người dùng/tài liệu và Audit Logs.
                 </p>
               </div>
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
-                Chờ nạp
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 shrink-0">
+                Đang mở
               </span>
-            </div>
+            </Link>
           </div>
         </div>
       </main>

@@ -1,9 +1,11 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { Sparkles, AlertCircle } from 'lucide-react';
+import { Sparkles, AlertCircle, ArrowLeft } from 'lucide-react';
 
 function CallbackContent() {
   const router = useRouter();
@@ -17,7 +19,7 @@ function CallbackContent() {
 
     if (accessToken && refreshToken) {
       try {
-        // Decode user payload from token or fetch profile
+        // Decode user payload from token
         const payloadBase64 = accessToken.split('.')[1];
         const decoded = JSON.parse(atob(payloadBase64));
 
@@ -35,7 +37,7 @@ function CallbackContent() {
         router.push('/');
       } catch {
         setTimeout(() => {
-          setError('Không thể xử lý mã xác thực Google OAuth2.');
+          setError('Không thể xử lý mã token xác thực từ Google OAuth2.');
         }, 0);
       }
     } else {
@@ -53,31 +55,38 @@ function CallbackContent() {
   }, [searchParams, router, setSession]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 p-4 font-sans text-white">
+      <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center space-y-4">
         {error ? (
-          <div>
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Lỗi xác thực</h2>
-            <p className="text-sm text-slate-500 mt-1 mb-4">{error}</p>
+          <div className="space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-7 h-7" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Lỗi xác thực SSO</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{error}</p>
+            </div>
             <button
               onClick={() => router.push('/login')}
-              className="w-full py-2 px-4 rounded-xl bg-indigo-600 text-white font-medium text-sm"
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition cursor-pointer"
             >
-              Quay về Đăng nhập
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Quay về trang Đăng nhập</span>
             </button>
           </div>
         ) : (
-          <div>
-            <div className="w-12 h-12 rounded-2xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center mx-auto mb-3 animate-pulse">
-              <Sparkles className="w-6 h-6" />
+          <div className="space-y-4 py-4">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/30 animate-pulse">
+              <Sparkles className="w-7 h-7" />
             </div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-              Đang xác thực Google...
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Vui lòng đợi giây lát trong khi chúng tôi hoàn tất đăng nhập.
-            </p>
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Đang thiết lập phiên làm việc...
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Đang giải mã token xác thực và thẩm định phân quyền RBAC của bạn.
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -89,8 +98,8 @@ export default function GoogleCallbackPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-          Đang tải...
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white font-sans text-xs">
+          Đang tải phiên xác thực...
         </div>
       }
     >
@@ -98,4 +107,3 @@ export default function GoogleCallbackPage() {
     </Suspense>
   );
 }
-

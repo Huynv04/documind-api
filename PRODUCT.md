@@ -32,10 +32,51 @@ Khác với các công cụ tìm kiếm từ khóa truyền thống (dễ bỏ s
 ## Capabilities and Constraints
 
 - **Capabilities**:
-  - Xác thực người dùng qua JWT và Google SSO OAuth2.
+  - **Module 1 Frontend: Xác thực Doanh nghiệp & Phân quyền Truy cập (Enterprise Auth & RBAC)**:
+    - **Giao diện Split-Screen Doanh nghiệp (Desktop-first Split Layout)**: Phía bên trái là không gian truyền tải giá trị cốt lõi của DocuMind AI (Bảo mật tài liệu nội bộ, trích dẫn có căn cứ, tỷ lệ ảo giác $\le 1\%$, đối chiếu trang gốc); phía bên phải là khung biểu mẫu đăng nhập/đăng ký tinh gọn, trực quan.
+    - **Đăng nhập Đa phương thức (Multi-method Authentication)**: Hỗ trợ đăng nhập một chạm qua Google Workspace SSO (OAuth2 chuẩn doanh nghiệp) và tài khoản Email + Mật khẩu công ty.
+    - **Thanh Chọn Nhanh Tài khoản Mẫu (Demo Role Quick-Switcher)**: Cho phép chuyên viên đánh giá / lập trình viên điền nhanh thông tin tài khoản mẫu cho 3 vai trò: `Nhân viên (Employee)`, `Quản lý Tri thức (Knowledge Manager)`, và `Quản trị viên (Admin)` mà không cần nhập tay.
+    - **Tiêu chuẩn Bảo mật Mật khẩu Thời gian thực (Live Password Policy Validation)**: Kiểm tra tức thì các điều kiện bảo mật (tối thiểu 6 ký tự, có chữ hoa A-Z, có ký tự đặc biệt) kèm thang đo độ mạnh mật khẩu và icon xác nhận trực quan.
+    - **Hộp thoại Hỗ trợ Quên Mật khẩu (IT Helpdesk Modal)**: Hướng dẫn nhân viên liên hệ Quản trị viên CNTT hoặc quy trình cấp lại thông tin truy cập bảo mật.
+    - **Xử lý Chuyển hướng Google OAuth2 Callback**: Hoạt ảnh tải mượt mà, tự động giải mã JWT payload và lưu trữ phiên làm việc an toàn trong `localStorage`.
   - Phân quyền theo vai trò (RBAC): `EMPLOYEE`, `KNOWLEDGE_MANAGER`, `ADMIN`.
-  - Quản lý tài liệu: Tải lên kéo thả, theo dõi trạng thái xử lý bất đồng bộ (`UPLOADING`, `PROCESSING`, `INDEXED`, `FAILED`, `ARCHIVED`, `DELETED`), gắn thẻ và gán phòng ban.
-  - Giám sát hàng đợi nạp ngầm & Soi Chunks (Module 3): Giám sát trạng thái Pipeline thời gian thực (Storage → Parser → Chunking → Batch Embedding → pgvector Indexing), kiểm tra cấu trúc từng đoạn văn bản đã bẻ (Chunk Inspector: token count, page index, nội dung trích xuất), và cơ chế kích hoạt thử lại (Retry Ingestion) cho các tệp thất bại.
+  - **Module 2 Frontend: Quản lý Kho Tài liệu & Ingestion Pipeline Workspace (Document Management)**:
+    - **Vùng Kéo Thả Trực Quan (Interactive Drag & Drop Upload Zone)**: Hỗ trợ kéo thả hoặc duyệt tệp từ máy tính, tự động kiểm tra định dạng hợp lệ (PDF text-based, DOCX, Markdown, Text) và kiểm soát dung lượng tối đa 20MB.
+    - **Cấu hình Nạp Tài liệu Toàn diện (Document Ingestion Modal)**:
+      - Thiết lập 3 cấp độ bảo mật nhạy cảm: `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`.
+      - Phân quyền truy cập RBAC theo vai trò (`EMPLOYEE`, `KNOWLEDGE_MANAGER`, `ADMIN`).
+      - Gán phòng ban chuyên môn chịu trách nhiệm áp dụng (`departmentId`).
+      - Nhập và hiển thị danh sách thẻ Tags phân loại danh mục nghiệp vụ.
+      - Thanh đo tiến trình tải lên thời gian thực (`Upload Progress Bar` với %).
+    - **Bảng Quản trị Vòng đời Tài liệu Chuyên nghiệp**:
+      - Phân cấp thông tin rõ ràng: Tên tệp, icon loại file, số trang, kích thước định dạng chuẩn (KB/MB), ngày tạo.
+      - Huy hiệu trạng thái thời gian thực (`INDEXED`, `PROCESSING` kèm hiệu ứng ping, `FAILED`, `ARCHIVED`).
+      - Nút **Soi Chunks (Chunk Inspector)** hiển thị số lượng chunks và mở drawer xem chi tiết từng đoạn văn bản kèm số trang và token count.
+      - Thao tác nhanh: Tải xuống tệp gốc, Kích hoạt thử lại (Retry Ingestion) cho tệp lỗi, và Xóa tài liệu kèm Hộp thoại xác nhận an toàn (Confirmation Dialog).
+    - **Thanh Công cụ Lọc Đa Chiều & Tìm kiếm**: Lọc tức thì theo từ khóa, trạng thái xử lý, cấp độ bảo mật và phòng ban.
+    - **Đồng bộ Tự động Hàng đợi Ngầm (Silent Live Auto-polling)**: Tự động cập nhật tiến độ nạp ngầm mỗi 3.5 giây khi có tệp đang ở trạng thái `PROCESSING` hoặc `UPLOADING` mà không gây giật lag giao diện.
+  - **Module 3 Frontend: Trung tâm Giám sát Hàng đợi & Pipeline Nạp Tri thức RAG (Ingestion Pipeline Workspace)**:
+    - **Sơ đồ Trực quan Dòng chảy Pipeline (5-Stage Visualizer Flow)**: Trình diễn dòng chảy dữ liệu nạp ngầm qua 5 chặng cốt lõi:
+      1. *Storage & Validation*: Xác thực định dạng và tải tệp từ MinIO/Local storage.
+      2. *Specialized Parser*: Bóc tách văn bản chuẩn hóa (PDF bảo toàn số trang, DOCX bóc tách cấu trúc, Markdown bảo toàn bảng biểu).
+      3. *Table-preserving Chunker*: Bẻ đoạn văn bản 800 tokens với overlap 100 tokens, đảm bảo không cắt gãy giữa hàng bảng biểu Markdown.
+      4. *Batch Embedding*: Gọi OpenAI `text-embedding-3-small` (1536 chiều, batching tối đa 100 đoạn/lần) tối ưu chi phí và độ trễ.
+      5. *pgvector Indexing*: Lưu trữ vector embeddings kèm Metadata RBAC (`allowed_roles`, `department_id`, `sensitivity_level`) và đánh chỉ mục HNSW/IVFFlat.
+    - **Bảng Thống kê Sức khỏe Hàng đợi BullMQ (Queue Health & Worker KPI Cards)**:
+      - 5 Thẻ chỉ số trạng thái tác vụ hàng đợi: `Active` (đang xử lý), `Waiting` (đang xếp hàng), `Completed` (hoàn tất thành công), `Failed` (thất bại), `Delayed` (tạm hoãn).
+      - Thẻ đo hiệu năng Worker: Trạng thái Worker (`ACTIVE` / `IDLE`), Tốc độ xử lý (Docs/phút, Chunks/giây), Thời gian xử lý trung bình (`avgIngestionTimeMs`), Tỷ lệ thành công (Success Rate %).
+    - **Trình Thám hiểm Tác vụ Nạp Ngầm (Ingestion Tasks Explorer Table)**:
+      - Bảng dữ liệu tác vụ thời gian thực: Tên tài liệu, icon định dạng, phòng ban, dung lượng, thanh tiến trình Pipeline 5 chặng với chỉ báo màu sắc trực quan, số lần thử lại (Attempts 1/3, 2/3), thời gian xử lý (Duration).
+      - Bộ lọc đa chiều: Tìm kiếm theo tên file, lọc theo trạng thái (`ACTIVE`, `WAITING`, `COMPLETED`, `FAILED`), lọc theo phòng ban.
+      - Thao tác nhanh trên từng tác vụ: "Thử lại ngay" (Retry Job), "Soi Chunks" (Chunk Inspector), và "Chi tiết lỗi & Stacktrace" (Error Modal).
+    - **Công cụ Quản trị Hàng đợi Nhanh (Bulk Queue Actions)**:
+      - Nút "Thử lại tất cả job thất bại" (Retry All Failed) 1-click.
+      - Nút "Dọn dẹp hàng đợi lỗi" (Clear Failed Queue).
+      - Công tắc "Tự động làm mới thời gian thực" (Live Auto-polling 3.5s toggle).
+    - **Trình Soi Chunks Chuyên sâu (Chunk Inspector Drawer)**:
+      - Cho phép kiểm tra danh sách chunks của tài liệu vừa nạp xong: số trang gốc, độ dài token, nội dung chunk với phông chữ monospace rõ nét, tìm kiếm nhanh nội dung trong chunk, và nút sao chép 1-chạm.
+    - **Bảo vệ Phân quyền RBAC**:
+      - Dành riêng cho Quản trị viên (`ADMIN`) và Quản lý Tri thức (`KNOWLEDGE_MANAGER`). Người dùng vai trò `EMPLOYEE` được hiển thị màn hình thông báo phân quyền thân thiện kèm CTA quay về trang Hỏi đáp Tri thức.
   - **Trò chuyện Đa lượt & Tra cứu Tri thức Split-view (Module 4 Frontend - Chat & Retrieval Workspace)**:
     - **Quản lý Phiên trò chuyện (Multi-turn Sessions)**: Danh sách phiên hỏi đáp theo dòng thời gian (Hôm nay, 7 ngày trước, Cũ hơn), tạo phiên mới (`New Chat`), đổi tên chủ đề hội thoại và xóa phiên.
     - **Hội thoại Đa lượt thông minh (Query Rewriting Feedback)**: Hiển thị minh bạch câu hỏi đã được viết lại (Rewritten Query) để người dùng hiểu AI đã xâu chuỗi ngữ cảnh trước đó ra sao.
@@ -66,6 +107,17 @@ Khác với các công cụ tìm kiếm từ khóa truyền thống (dễ bỏ s
       - Endpoint phân trang chuẩn Enterprise (`page`, `limit`).
       - Lọc theo hành động (`action`), loại tài nguyên (`resourceType`), định danh người dùng (`userId`), khoảng thời gian (`startDate`, `endDate`) và từ khóa tìm kiếm (`search`).
       - Bảo vệ tuyệt đối bằng cơ chế RBAC cấp controller (`@Roles(UserRole.ADMIN)`).
+  - **Module 6 Frontend: Admin Dashboard & Audit Logs Explorer Workspace**:
+    - **Trung tâm Giám sát Tài nguyên & LLMOps**:
+      - Bảng điều khiển trực quan 4 cụm chỉ số: Người dùng (RBAC breakdown), Tài liệu & Lưu trữ (MB/GB, vector chunks), Hoạt động Tra cứu & Độ trễ phản hồi, Chi phí AI (quy đổi USD và VND).
+      - Thẻ tiến trình lưu trữ và phân bổ trạng thái tài liệu (`INDEXED`, `PROCESSING`, `FAILED`).
+    - **Trình Thám hiểm Nhật ký An toàn (Audit Logs Explorer)**:
+      - Bảng dữ liệu kiểm toán chi tiết: người dùng, phòng ban, loại hành động (có Action Badges màu ngữ nghĩa), tài nguyên bị tác động, IP, User-Agent, thời gian.
+      - Thanh công cụ tìm kiếm và bộ lọc đa tiêu chí (Action, Search keyword, Reset filter).
+      - Modal soi chi tiết Payload / Metadata JSON của từng hành động.
+      - Phân trang chuẩn doanh nghiệp kèm đếm tổng bản ghi.
+    - **Bảo mật Giao diện & RBAC Guard**:
+      - Tự động kiểm tra quyền `ADMIN`. Người dùng không có quyền quản trị được chuyển hướng hoặc hiển thị màn hình từ chối truy cập (Access Denied) thân thiện.
 - **Constraints**:
   - Không tự suy đoán thông tin ngoài ngữ cảnh tài liệu nội bộ được cung cấp.
   - Xử lý nạp tài liệu nặng chạy ngầm qua Background Queue (BullMQ) để không chặn luồng HTTP API.
